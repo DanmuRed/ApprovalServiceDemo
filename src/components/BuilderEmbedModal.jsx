@@ -26,6 +26,7 @@ export default function BuilderEmbedModal({
   onOpenSettings,
 }) {
   const iframeRef = useRef(null);
+  const savedTimerRef = useRef(null);
   const [error, setError] = useState('');
   const [fetching, setFetching] = useState(false);
   const [savedNote, setSavedNote] = useState('');
@@ -40,7 +41,8 @@ export default function BuilderEmbedModal({
 
     if (data.type === 'EMBED_SAVED') {
       setSavedNote('저장되었습니다.');
-      setTimeout(() => setSavedNote(''), 2500);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSavedNote(''), 2500);
       if (onSaved) onSaved(data.playbookId);
       return;
     }
@@ -67,10 +69,20 @@ export default function BuilderEmbedModal({
     }
   }, [feBase, playbookId, actor, isNew, onSaved]);
 
+  // 모달이 열릴 때만 상태를 초기화한다. (handleMessage 와 분리)
+  // 저장 직후 onSaved → 부모 리렌더로 handleMessage 참조가 바뀌는데, 초기화를
+  // 리스너 effect 에 두면 그때마다 savedNote 가 지워져 토스트가 깜빡 사라진다.
   useEffect(() => {
     if (!open) return undefined;
     setError('');
     setSavedNote('');
+    return () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
     window.addEventListener('message', handleMessage);
     return () => {
       window.removeEventListener('message', handleMessage);
