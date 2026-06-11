@@ -126,8 +126,26 @@ export function findRequesterSelectionNodes(definitionJsonOrObject) {
   return out;
 }
 
+// "요청자가 사후확인 선택"(기능 A) 노드 목록을 반환한다.
+// approverMode 와 무관하게 data.postConfirm===true && data.postConfirmRequesterChoice===true 인 노드.
+//   각 항목: { nodeId, nodeLabel }
+export function findPostConfirmChoiceNodes(definitionJsonOrObject) {
+  const def = parseDefinition(definitionJsonOrObject);
+  if (!def || !Array.isArray(def.nodes)) return [];
+  const out = [];
+  for (const node of def.nodes) {
+    if (!node || !node.id) continue;
+    const data = node.data || {};
+    if (data.role === 'drafter' || data.role === 'end') continue;
+    if (data.postConfirm === true && data.postConfirmRequesterChoice === true) {
+      out.push({ nodeId: node.id, nodeLabel: data.stageName || data.label || node.id });
+    }
+  }
+  return out;
+}
+
 // 선택 상태(selections)가 모든 required 노드에 대해 채워졌는지 검증.
-//   selections = { [nodeId]: { selectedApprovers: [userId, ...] } }
+//   selections = { [nodeId]: { selectedApprovers: [userId, ...], postConfirm?: boolean } }
 export function validateSelections(requiredNodes, selections) {
   const missing = [];
   for (const node of requiredNodes) {
@@ -154,4 +172,21 @@ export function selectionsToAssignees(requiredNodes, selections) {
     }
   }
   return out;
+}
+
+// 결재자 선택(approver) + 사후확인 선택(postConfirm)을 nodeId 기준으로 병합한 assignees[] 를 만든다.
+// 같은 노드가 양쪽(requestSelect + 사후확인 선택)에 모두 해당하면 한 항목으로 합쳐진다.
+// 사후확인은 ON(true)일 때만 전송 — 미선택/OFF 는 BE 에서 일반 결재자로 처리(기본 OFF)되므로 생략.
+export function buildAssignees(requiredNodes, postConfirmNodes, selections) {
+  const byNodeId = new Map();
+  for (const a of selectionsToAssignees(requiredNodes, selections)) {
+    byNodeId.set(a.nodeId, { ...a });
+  }
+  for (const node of (postConfirmNodes || [])) {
+    if (selections?.[node.nodeId]?.postConfirm !== true) continue;
+    const existing = byNodeId.get(node.nodeId) || { nodeId: node.nodeId };
+    existing.postConfirm = true;
+    byNodeId.set(node.nodeId, existing);
+  }
+  return Array.from(byNodeId.values());
 }

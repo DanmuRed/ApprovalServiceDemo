@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { UserCheck, Users, Briefcase, Folder, AlertCircle } from 'lucide-react';
+import { UserCheck, Users, Briefcase, Folder, AlertCircle, ClipboardCheck } from 'lucide-react';
 import { orgDirectoryApi, describeError } from '../api';
 
 // selector(부서/직책/그룹/사용자) 1건 → 사용자 목록으로 펼친다.
@@ -188,10 +188,17 @@ function NodeSelectionCard({ actor, node, selection, onChange }) {
 }
 
 // requiredNodes: findRequesterSelectionNodes(definition) 결과
-// selections: { [nodeId]: { selectedApprovers: [userId, ...] } }
-export default function RequesterSelectionPanel({ actor, requiredNodes, selections, onChange }) {
+// postConfirmNodes: findPostConfirmChoiceNodes(definition) 결과 (기능 A — 요청자 사후확인 선택)
+// selections: { [nodeId]: { selectedApprovers?: [...], postConfirm?: boolean } }
+export default function RequesterSelectionPanel({ actor, requiredNodes, postConfirmNodes = [], selections, onChange }) {
   const update = (nodeId, value) => {
-    onChange({ ...(selections || {}), [nodeId]: value });
+    // 결재자 선택은 같은 노드의 기존 선택(postConfirm 등)을 보존하며 병합한다.
+    onChange({ ...(selections || {}), [nodeId]: { ...(selections?.[nodeId] || {}), ...value } });
+  };
+
+  const setPostConfirm = (nodeId, on) => {
+    const prev = selections?.[nodeId] || {};
+    onChange({ ...(selections || {}), [nodeId]: { ...prev, postConfirm: on } });
   };
 
   const missingCount = useMemo(() => {
@@ -203,33 +210,84 @@ export default function RequesterSelectionPanel({ actor, requiredNodes, selectio
     return n;
   }, [requiredNodes, selections]);
 
-  if (!requiredNodes || requiredNodes.length === 0) return null;
+  const hasRequired = Array.isArray(requiredNodes) && requiredNodes.length > 0;
+  const hasPostConfirm = Array.isArray(postConfirmNodes) && postConfirmNodes.length > 0;
+  if (!hasRequired && !hasPostConfirm) return null;
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50/60">
       <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <UserCheck className="w-4 h-4 text-slate-700" />
-          <span className="text-sm font-semibold text-slate-900">결재자 선택 필요</span>
+          <span className="text-sm font-semibold text-slate-900">기안 시 선택 필요</span>
         </div>
-        <span className={`text-[11px] ${missingCount > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
-          {missingCount > 0 ? `미선택 ${missingCount}건` : '모두 선택됨'}
-        </span>
+        {hasRequired && (
+          <span className={`text-[11px] ${missingCount > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+            {missingCount > 0 ? `미선택 ${missingCount}건` : '모두 선택됨'}
+          </span>
+        )}
       </div>
       <div className="p-3 space-y-2.5">
-        <p className="text-[12px] text-slate-600 leading-relaxed">
-          아래 단계는 결재선에서 <span className="font-semibold">[요청 시 사용자가 지정]</span> 으로 설정되어
-          있어 기안 시점에 결재자를 직접 지정해야 합니다.
-        </p>
-        {requiredNodes.map((node) => (
-          <NodeSelectionCard
-            key={node.nodeId}
-            actor={actor}
-            node={node}
-            selection={selections?.[node.nodeId]}
-            onChange={(v) => update(node.nodeId, v)}
-          />
-        ))}
+        {hasRequired && (
+          <>
+            <p className="text-[12px] text-slate-600 leading-relaxed">
+              아래 단계는 결재선에서 <span className="font-semibold">[요청 시 사용자가 지정]</span> 으로 설정되어
+              있어 기안 시점에 결재자를 직접 지정해야 합니다.
+            </p>
+            {requiredNodes.map((node) => (
+              <NodeSelectionCard
+                key={node.nodeId}
+                actor={actor}
+                node={node}
+                selection={selections?.[node.nodeId]}
+                onChange={(v) => update(node.nodeId, v)}
+              />
+            ))}
+          </>
+        )}
+
+        {hasPostConfirm && (
+          <div className="space-y-2">
+            <p className="text-[12px] text-slate-600 leading-relaxed">
+              아래 단계는 <span className="font-semibold">사후확인 여부</span>를 기안 시점에 정할 수 있습니다.
+              켜면 결재 흐름을 막지 않고 자동 통과하며 나중에 확인만 기록합니다.
+            </p>
+            {postConfirmNodes.map((node) => {
+              const on = selections?.[node.nodeId]?.postConfirm === true;
+              return (
+                <div
+                  key={node.nodeId}
+                  className="flex items-center justify-between rounded-lg border border-slate-300 bg-white p-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <ClipboardCheck className="w-4 h-4 text-indigo-500" />
+                    <span className="font-medium text-slate-900 text-sm">{node.nodeLabel}</span>
+                  </div>
+                  <div className="flex rounded-md border border-slate-200 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setPostConfirm(node.nodeId, false)}
+                      className={`px-3 py-1 text-xs font-medium transition ${
+                        !on ? 'bg-slate-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      사용 안 함
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPostConfirm(node.nodeId, true)}
+                      className={`px-3 py-1 text-xs font-medium transition ${
+                        on ? 'bg-indigo-500 text-white' : 'bg-white text-indigo-600 hover:bg-indigo-50'
+                      }`}
+                    >
+                      사후확인
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

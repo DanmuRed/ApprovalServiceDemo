@@ -173,10 +173,19 @@ export const transitionTypesApi = {
   list: (actor) => apiRequest('/workflow/transition-types', { actor }),
 };
 
+// 정책 위반(/problems/policy/<slug>) 안내 라벨. 매핑 없는 slug 는 기존 fallback(title·detail·type) 유지.
+const POLICY_LABELS = {
+  'requester-only-approver': '기안자를 제외하면 남는 결재자가 없습니다. 결재선 설정을 확인하세요.',
+};
+
 export function describeError(err) {
   if (!err) return '알 수 없는 오류';
   if (err.body && typeof err.body === 'object') {
     const { title, detail, type } = err.body;
+    if (typeof type === 'string' && type.startsWith('/problems/policy/')) {
+      const label = POLICY_LABELS[type.slice('/problems/policy/'.length)];
+      if (label) return detail ? `${label} (${detail})` : label;
+    }
     return [title, detail, type].filter(Boolean).join(' · ') || `HTTP ${err.status || ''}`;
   }
   return err.message || String(err);

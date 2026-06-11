@@ -5,7 +5,8 @@ import { getFeBase } from '../runtimeSettings';
 import { makeLocalId, makeRandomTitle } from '../utils';
 import {
   findRequesterSelectionNodes,
-  selectionsToAssignees,
+  findPostConfirmChoiceNodes,
+  buildAssignees,
   validateSelections,
 } from '../playbookSelection';
 import { getAssignedPlaybookIds } from '../lineAssignments';
@@ -26,7 +27,9 @@ export default function ApplyTab({ user, onCreated, onOpenSettings }) {
   const [revisionLoading, setRevisionLoading] = useState(false);
   const [revisionError, setRevisionError] = useState('');
   const [requiredNodes, setRequiredNodes] = useState([]);
-  // selections shape: { [nodeId]: { selectedApprovers: [userId, ...] } }
+  // 기능 A — 요청자가 사후확인 on/off 를 정할 수 있는 노드(approverMode 무관).
+  const [postConfirmNodes, setPostConfirmNodes] = useState([]);
+  // selections shape: { [nodeId]: { selectedApprovers?: [userId, ...], postConfirm?: boolean } }
   const [selections, setSelections] = useState({});
 
   const selectedPlaybook = useMemo(
@@ -38,6 +41,7 @@ export default function ApplyTab({ user, onCreated, onOpenSettings }) {
   useEffect(() => {
     if (!selectedId) {
       setRequiredNodes([]);
+      setPostConfirmNodes([]);
       setSelections({});
       setRevisionError('');
       return;
@@ -48,14 +52,15 @@ export default function ApplyTab({ user, onCreated, onOpenSettings }) {
     playbooksApi.latestRevision(actor, selectedId)
       .then((rev) => {
         if (!alive) return;
-        const nodes = findRequesterSelectionNodes(rev?.definition);
-        setRequiredNodes(nodes);
+        setRequiredNodes(findRequesterSelectionNodes(rev?.definition));
+        setPostConfirmNodes(findPostConfirmChoiceNodes(rev?.definition));
         setSelections({});
       })
       .catch((e) => {
         if (!alive) return;
         setRevisionError(describeError(e));
         setRequiredNodes([]);
+        setPostConfirmNodes([]);
         setSelections({});
       })
       .finally(() => {
@@ -111,7 +116,7 @@ export default function ApplyTab({ user, onCreated, onOpenSettings }) {
     setSuccessMsg('');
     try {
       const finalTitle = title.trim() || makeRandomTitle();
-      const assignees = selectionsToAssignees(requiredNodes, selections);
+      const assignees = buildAssignees(requiredNodes, postConfirmNodes, selections);
       const body = {
         title: finalTitle,
         externalRefId: makeLocalId('demo-ref'),
@@ -259,10 +264,11 @@ export default function ApplyTab({ user, onCreated, onOpenSettings }) {
             </div>
           )}
 
-          {!revisionLoading && requiredNodes.length > 0 && (
+          {!revisionLoading && (requiredNodes.length > 0 || postConfirmNodes.length > 0) && (
             <RequesterSelectionPanel
               actor={actor}
               requiredNodes={requiredNodes}
+              postConfirmNodes={postConfirmNodes}
               selections={selections}
               onChange={setSelections}
             />
