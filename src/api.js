@@ -151,6 +151,16 @@ export const approvalsApi = {
       idempotencyPrefix: 'demo-approval-preview-ticket',
     }),
 
+  // 결재 처리(ACT) iframe 임베드용 1회용 ticket 발급. body 로 결재자(actorUserId)를 전달하면
+  // BE 가 ticket 에 바인딩하고, iframe(fe/ act-embed)은 그 결재자로서 transition 을 실행한다.
+  createActTicket: (actor, approvalId, actorUserId) =>
+    apiRequest(`/approvals/${approvalId}/act-tickets`, {
+      method: 'POST',
+      actor,
+      idempotencyPrefix: 'demo-approval-act-ticket',
+      body: { actorUserId },
+    }),
+
   transition: (actor, approvalId, slug, { comment } = {}) =>
     apiRequest(`/approvals/${approvalId}/transitions/${slug}`, {
       method: 'POST',

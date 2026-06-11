@@ -11,6 +11,7 @@ import {
 import { TransitionMetaContext } from '../utils/transitionRegistry';
 import { getFeBase } from '../runtimeSettings';
 import ApprovalFlowPreview from './ApprovalFlowPreview';
+import ApprovalActEmbed from './ApprovalActEmbed';
 
 export default function ApprovalDetailModal({ user, approvalId, onClose }) {
   const transitionMetaMap = useContext(TransitionMetaContext);
@@ -105,6 +106,19 @@ export default function ApprovalDetailModal({ user, approvalId, onClose }) {
                   actor={user.userId}
                 />
               </div>
+
+              {approval.state === 'IN_PROGRESS' && (
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-900 mb-2">결재 처리 (임베드)</h4>
+                  <ApprovalActEmbed
+                    approvalId={approvalId}
+                    feBase={getFeBase()}
+                    actor={user.userId}
+                    defaultActorUserId={approval.currentApprover || ''}
+                    onActed={load}
+                  />
+                </div>
+              )}
 
               <div>
                 <h4 className="text-sm font-semibold text-slate-900 mb-2">결재 단계</h4>
