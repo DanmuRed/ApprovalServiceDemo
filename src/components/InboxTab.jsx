@@ -96,6 +96,11 @@ export default function InboxTab({ user, refreshKey, onActed }) {
         </button>
       </div>
 
+      <p className="text-xs text-slate-500 leading-relaxed">
+        행의 처리 버튼은 <span className="font-medium text-slate-600">① 직접 API 연동</span> 방식입니다.
+        {' '}항목을 열면 <span className="font-medium text-slate-600">② iframe 임베드</span> 로도 같은 결재를 처리할 수 있습니다.
+      </p>
+
       {error && (
         <div className="px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
           {error}

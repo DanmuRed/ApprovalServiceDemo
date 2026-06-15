@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useState } from 'react';
-import { X, RefreshCw } from 'lucide-react';
+import { X, RefreshCw, Plug, Frame } from 'lucide-react';
 import { approvalsApi, describeError } from '../api';
 import {
   approvalStateLabel,
@@ -7,6 +7,7 @@ import {
   formatDateTime,
   progressPercent,
   stepStateLabel,
+  findPendingStepForUser,
 } from '../utils';
 import { TransitionMetaContext } from '../utils/transitionRegistry';
 import { getFeBase } from '../runtimeSettings';
@@ -18,6 +19,11 @@ export default function ApprovalDetailModal({ user, approvalId, onClose }) {
   const [approval, setApproval] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // 결재 처리 방식: 'direct'(직접 API 연동) | 'embed'(iframe 임베드)
+  const [actMode, setActMode] = useState('direct');
+  const [comment, setComment] = useState('');
+  const [acting, setActing] = useState(false);
+  const [actError, setActError] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -36,6 +42,32 @@ export default function ApprovalDetailModal({ user, approvalId, onClose }) {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [approvalId]);
+
+  // 방식 ① 직접 API 연동: demo_mock 이 직접 transition 을 호출(actor 헤더 = 로그인 사용자).
+  const handleDirectAct = async (slug) => {
+    setActing(true);
+    setActError('');
+    try {
+      await approvalsApi.transition(user.userId, approvalId, slug, {
+        comment: comment.trim() || undefined,
+      });
+      setComment('');
+      await load();
+    } catch (e) {
+      setActError(describeError(e));
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const myStep = approval ? findPendingStepForUser(approval, user.userId) : null;
+  const canActAsMe = approval?.state === 'IN_PROGRESS' && !!myStep;
+  const availableTransitions = Array.isArray(approval?.availableTransitions)
+    ? approval.availableTransitions
+    : [];
+  const currentApproverName = approval?.currentApprover
+    ? (approval.userDisplayNames?.[approval.currentApprover] || approval.currentApprover)
+    : null;
 
   return (
     <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
@@ -98,26 +130,111 @@ export default function ApprovalDetailModal({ user, approvalId, onClose }) {
                 </div>
               </div>
 
-              <div>
-                <h4 className="text-sm font-semibold text-slate-900 mb-2">진행 흐름</h4>
-                <ApprovalFlowPreview
-                  approvalId={approvalId}
-                  feBase={getFeBase()}
-                  actor={user.userId}
-                />
-              </div>
-
-              {approval.state === 'IN_PROGRESS' && (
+              {canActAsMe ? (
                 <div>
-                  <h4 className="text-sm font-semibold text-slate-900 mb-2">결재 처리 (임베드)</h4>
-                  <ApprovalActEmbed
-                    approvalId={approvalId}
-                    feBase={getFeBase()}
-                    actor={user.userId}
-                    defaultActorUserId={approval.currentApprover || ''}
-                    onActed={load}
-                  />
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <h4 className="text-sm font-semibold text-slate-900">결재 처리</h4>
+                    <div className="inline-flex p-0.5 gap-0.5 bg-slate-100 rounded-lg">
+                      <SegButton
+                        active={actMode === 'direct'}
+                        onClick={() => setActMode('direct')}
+                        Icon={Plug}
+                        label="① 직접 API 연동"
+                      />
+                      <SegButton
+                        active={actMode === 'embed'}
+                        onClick={() => setActMode('embed')}
+                        Icon={Frame}
+                        label="② iframe 임베드"
+                      />
+                    </div>
+                  </div>
+
+                  {actMode === 'direct' ? (
+                    <>
+                      <p className="text-xs text-slate-500 mb-2 leading-relaxed">
+                        연동 시스템(demo_mock)이 직접{' '}
+                        <span className="font-mono">POST /transitions</span> 를{' '}
+                        <span className="font-mono">X-Approval-Actor: {user.userId}</span> 헤더로 호출합니다.
+                      </p>
+                      <div className="mb-3">
+                        <ApprovalFlowPreview
+                          approvalId={approvalId}
+                          feBase={getFeBase()}
+                          actor={user.userId}
+                        />
+                      </div>
+                      <textarea
+                        value={comment}
+                        onChange={(e) => setComment(e.target.value)}
+                        placeholder="결재 의견 (선택)"
+                        rows={2}
+                        maxLength={2000}
+                        className="w-full resize-y rounded-lg border border-slate-300 px-2.5 py-2 text-sm mb-2"
+                      />
+                      {actError && (
+                        <div className="px-3 py-2 mb-2 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+                          {actError}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {availableTransitions.map((slug) => {
+                          const meta = transitionMetaMap[slug];
+                          const Icon = meta?.icon;
+                          const label = meta?.label || slug;
+                          const buttonClass = meta?.buttonClass
+                            || 'bg-slate-600 text-white hover:bg-slate-700';
+                          return (
+                            <button
+                              key={slug}
+                              type="button"
+                              disabled={acting}
+                              onClick={() => handleDirectAct(slug)}
+                              className={`px-3.5 py-2 text-sm font-medium rounded-lg disabled:opacity-50 inline-flex items-center gap-1.5 ${buttonClass}`}
+                            >
+                              {Icon && <Icon className="w-4 h-4" />}
+                              {label}
+                            </button>
+                          );
+                        })}
+                        {availableTransitions.length === 0 && (
+                          <span className="text-xs text-slate-400 italic">처리 가능 항목 없음</span>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs text-slate-500 mb-2 leading-relaxed">
+                        approval_service 의 결재 화면을 iframe 으로 그대로 임베드합니다. 결재자는 1회용 ACT ticket 에 바인딩되며(
+                        <span className="font-mono">{user.userId}</span>), actor 헤더는 전송하지 않습니다.
+                      </p>
+                      <ApprovalActEmbed
+                        approvalId={approvalId}
+                        feBase={getFeBase()}
+                        actor={user.userId}
+                        actorUserId={user.userId}
+                        onActed={load}
+                      />
+                    </>
+                  )}
                 </div>
+              ) : (
+                <>
+                  {approval.state === 'IN_PROGRESS' && (
+                    <div className="px-4 py-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm">
+                      현재 결재 차례: <span className="font-mono">{currentApproverName || '-'}</span>.
+                      {' '}본인 차례일 때 결재함에서 처리할 수 있습니다.
+                    </div>
+                  )}
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-900 mb-2">진행 흐름</h4>
+                    <ApprovalFlowPreview
+                      approvalId={approvalId}
+                      feBase={getFeBase()}
+                      actor={user.userId}
+                    />
+                  </div>
+                </>
               )}
 
               <div>
@@ -173,6 +290,23 @@ export default function ApprovalDetailModal({ user, approvalId, onClose }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function SegButton({ active, onClick, Icon, label }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-2.5 py-1.5 text-xs rounded-md inline-flex items-center gap-1.5 transition ${
+        active
+          ? 'bg-white text-slate-900 border border-slate-300 font-medium shadow-sm'
+          : 'text-slate-500 hover:text-slate-700'
+      }`}
+    >
+      <Icon className="w-3.5 h-3.5" />
+      {label}
+    </button>
   );
 }
 
