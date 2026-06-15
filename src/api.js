@@ -133,6 +133,19 @@ export const approvalsApi = {
     return apiRequest(`/approvals/inbox?${params.toString()}`, { actor });
   },
 
+  // 기안자 outbox: actor(X-Approval-Actor) 본인이 올린 결재만 단일 호출로 반환.
+  // GET /approvals 와 동일한 ApprovalPageResponse 형태지만 requesterId 가 헤더 actor 로 강제되어
+  // 임의 기안자 조회가 불가하다(결재자 inbox 와 대칭).
+  outbox: (actor, { states, page = 0, size = 50 } = {}) => {
+    const params = new URLSearchParams();
+    if (Array.isArray(states)) {
+      states.filter(Boolean).forEach((s) => params.append('state', s));
+    }
+    params.set('page', String(page));
+    params.set('size', String(size));
+    return apiRequest(`/approvals/outbox?${params.toString()}`, { actor });
+  },
+
   createFromPlaybook: (actor, body) =>
     apiRequest('/approvals/from-playbook', {
       method: 'POST',

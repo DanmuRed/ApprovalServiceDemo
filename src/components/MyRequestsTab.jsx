@@ -15,7 +15,7 @@ export default function MyRequestsTab({ user, refreshKey }) {
     setLoading(true);
     setError('');
     try {
-      const res = await approvalsApi.list(actor, { requesterId: actor, size: 50 });
+      const res = await approvalsApi.outbox(actor, { size: 50 });
       const list = Array.isArray(res?.items) ? res.items : [];
       // 최신 생성순
       list.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
