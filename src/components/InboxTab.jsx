@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { ClipboardCheck, RefreshCw, ChevronRight } from 'lucide-react';
 import { approvalsApi, describeError } from '../api';
-import { formatDateTime, findPendingStepForUser } from '../utils';
+import { formatDateTime } from '../utils';
 import { TransitionMetaContext } from '../utils/transitionRegistry';
 import ApprovalDetailModal from './ApprovalDetailModal';
 
@@ -25,25 +25,10 @@ export default function InboxTab({ user, refreshKey, onActed }) {
     setLoading(true);
     setError('');
     try {
-      // 진행 중 결재 전체를 받아서 클라이언트에서 "내가 결재할 차례" 만 필터링.
-      // BE 에 inbox 전용 엔드포인트가 없어 detail 호출로 steps[] 를 본다. (데모 한정)
-      const res = await approvalsApi.list(actor, { states: ['IN_PROGRESS'], size: 100 });
-      const list = Array.isArray(res?.items) ? res.items : [];
-      const detailed = await Promise.all(
-        list.map(async (item) => {
-          try {
-            const detail = await approvalsApi.get(actor, item.id);
-            const myStep = findPendingStepForUser(detail, actor);
-            return myStep ? { item, detail, myStep } : null;
-          } catch {
-            return null;
-          }
-        }),
-      );
-      const filtered = detailed.filter(Boolean);
-      filtered.sort((a, b) =>
-        String(b.item.createdAt || '').localeCompare(String(a.item.createdAt || '')));
-      setItems(filtered);
+      // BE 전용 inbox 엔드포인트가 "내가 처리할 차례" 인 진행 중 결재만 생성 시각 내림차순으로 반환한다.
+      // 항목에 myStepStageIndex/myStepName/availableTransitions[] 가 포함되어 detail 페치/클라 필터가 불필요.
+      const res = await approvalsApi.inbox(actor, { size: 100 });
+      setItems(Array.isArray(res?.items) ? res.items : []);
     } catch (e) {
       setError(describeError(e));
     } finally {
@@ -116,9 +101,9 @@ export default function InboxTab({ user, refreshKey, onActed }) {
           </div>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {items.map(({ item, detail, myStep }) => {
+            {items.map((item) => {
               const isActing = actingId === item.id;
-              const stage = typeof myStep.stageIndex === 'number' ? myStep.stageIndex + 1 : '-';
+              const stage = typeof item.myStepStageIndex === 'number' ? item.myStepStageIndex + 1 : '-';
               return (
                 <li key={item.id} className="px-4 py-3 hover:bg-slate-50">
                   <div className="flex items-center gap-3">
@@ -136,12 +121,12 @@ export default function InboxTab({ user, refreshKey, onActed }) {
                       <div className="text-xs text-slate-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
                         <span>기안자 <span className="font-mono">{item.requesterId}</span></span>
                         <span>{formatDateTime(item.createdAt)}</span>
-                        <span>현재 단계: {myStep.name || '-'}</span>
+                        <span>현재 단계: {item.myStepName || '-'}</span>
                       </div>
                     </button>
 
                     <div className="flex items-center gap-1.5">
-                      {(detail.availableTransitions || []).map((slug) => {
+                      {(item.availableTransitions || []).map((slug) => {
                         const meta = transitionMetaMap[slug];
                         const Icon = meta?.icon;
                         const label = meta?.label || slug;
@@ -160,7 +145,7 @@ export default function InboxTab({ user, refreshKey, onActed }) {
                           </button>
                         );
                       })}
-                      {(detail.availableTransitions || []).length === 0 && (
+                      {(item.availableTransitions || []).length === 0 && (
                         <span className="text-xs text-slate-400 italic">처리 가능 항목 없음</span>
                       )}
                       <button

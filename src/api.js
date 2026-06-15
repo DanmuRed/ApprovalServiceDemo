@@ -124,6 +124,15 @@ export const approvalsApi = {
     return apiRequest(`/approvals?${params.toString()}`, { actor });
   },
 
+  // 결재자 inbox: actor(X-Approval-Actor)가 지금 처리할 차례인 진행 중 결재만 단일 호출로 반환.
+  // 항목에 myStepStageIndex/myStepName/availableTransitions[] 가 포함되어 detail 페치 없이 결재함을 그린다.
+  inbox: (actor, { page = 0, size = 50 } = {}) => {
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('size', String(size));
+    return apiRequest(`/approvals/inbox?${params.toString()}`, { actor });
+  },
+
   createFromPlaybook: (actor, body) =>
     apiRequest('/approvals/from-playbook', {
       method: 'POST',
