@@ -1,21 +1,15 @@
-// 플레이북 revision 의 definition JSON 을 읽어 기안 시점에 기안자가
-// 결재자를 직접 골라야 하는 노드를 추려낸다.
+// 기안 시점에 기안자가 직접 정해야 하는 항목(결재자 선택 / 사후확인 선택)을 추려낸다.
 //
-// BE 규칙 요약 (PlaybookCompiler.java 와 Validator 기준):
-// - 신규 selectors[] 형식: data.approverMode === 'requestSelect' 인 노드는
-//   selectors 합집합 중에서 기안자가 정확히 1명을 골라야 한다 (REQUESTER_SELECT_ONE).
-// - 레거시 approvers[] 형식: type='candidatePool', selectionMode='REQUESTER_SELECT_ONE'
-//   인 노드는 candidatePool.candidates[] 중 1명을 골라야 한다.
-//   (REQUESTER_SELECT_MANY 도 같은 후보군에서 minSelect~maxSelect 명을 고르는 형태지만
-//    demo_mock 데모 시나리오는 ONE 만 지원한다.)
+// - 결재자 선택(requestSelect): 서버의 `GET /playbooks/{id}/candidate-pools` 가
+//   approverMode=requestSelect 노드를 후보까지 펼쳐서 내려준다. 본 모듈은 그 응답을
+//   화면이 쓰는 공통 모양으로 변환만 한다(클라이언트에서 selector 를 직접 펼치지 않는다).
+// - 사후확인 선택(기능 A): candidate-pools 에는 없으므로 revision 의 definition JSON 에서 추출한다.
 //
-// 본 모듈은 위 두 형식을 공통 모양으로 변환한다:
-//   { nodeId, label, selectionMode: 'REQUESTER_SELECT_ONE',
-//     minSelect: 1, maxSelect: 1, selectors: [{kind, ...id, label}] }
+// requiredNode 공통 모양:
+//   { nodeId, nodeLabel, selectionMode: 'REQUESTER_SELECT_ONE',
+//     minSelect: 1, maxSelect: 1, candidates: [{ userId, displayName, sourceName }] }
 
-const APPROVER_MODE_REQUEST_SELECT = 'requestSelect';
 const SELECTION_MODE_REQUESTER_SELECT_ONE = 'REQUESTER_SELECT_ONE';
-const SELECTION_MODE_REQUESTER_SELECT_MANY = 'REQUESTER_SELECT_MANY';
 
 function parseDefinition(definitionJsonOrObject) {
   if (definitionJsonOrObject == null) return null;
@@ -28,102 +22,27 @@ function parseDefinition(definitionJsonOrObject) {
   }
 }
 
-function normalizeSelectorsFromNewFormat(rawSelectors) {
-  if (!Array.isArray(rawSelectors)) return [];
-  const out = [];
-  for (const s of rawSelectors) {
-    if (!s || typeof s !== 'object' || !s.kind) continue;
-    const label = s.label || '';
-    switch (s.kind) {
-      case 'user':
-        if (s.userId) out.push({ kind: 'user', userId: s.userId, label: label || s.userId });
-        break;
-      case 'department':
-        if (s.deptId) out.push({ kind: 'department', deptId: s.deptId, label: label || s.deptId });
-        break;
-      case 'position':
-        if (s.positionId) out.push({ kind: 'position', positionId: s.positionId, label: label || s.positionId });
-        break;
-      case 'customGroup':
-        if (s.groupId) out.push({ kind: 'customGroup', groupId: s.groupId, label: label || s.groupId });
-        break;
-      default:
-        break;
-    }
-  }
-  return out;
-}
-
-function legacyCandidatePoolSelectors(approvers) {
-  if (!Array.isArray(approvers)) return null;
-  for (const a of approvers) {
-    if (!a || typeof a !== 'object') continue;
-    if (a.type !== 'candidatePool') continue;
-    const pool = a.candidatePool;
-    if (!pool || !Array.isArray(pool.candidates)) return null;
-    const selectors = pool.candidates
-      .filter((c) => c && c.active !== false && c.userId)
-      .map((c) => ({ kind: 'user', userId: c.userId, label: c.label || c.userId }));
-    return {
-      selectors,
-      selectionMode: pool.selectionMode || SELECTION_MODE_REQUESTER_SELECT_ONE,
-      minSelect: typeof pool.minSelect === 'number' ? pool.minSelect : 1,
-      maxSelect: typeof pool.maxSelect === 'number' ? pool.maxSelect : 1,
-    };
-  }
-  return null;
-}
-
-// 기안 시점에 기안자가 결재자를 골라야 하는 노드 목록을 반환한다.
-// 각 항목 모양:
-//   { nodeId, nodeLabel, selectionMode, minSelect, maxSelect, selectors }
-export function findRequesterSelectionNodes(definitionJsonOrObject) {
-  const def = parseDefinition(definitionJsonOrObject);
-  if (!def || !Array.isArray(def.nodes)) return [];
-  const out = [];
-  for (const node of def.nodes) {
-    if (!node || !node.id) continue;
-    const data = node.data || {};
-    const role = data.role;
-    if (role === 'drafter' || role === 'end') continue;
-    const nodeLabel = data.stageName || data.label || node.id;
-
-    // 1) 신규 selectors[] + approverMode=requestSelect
-    if (data.approverMode === APPROVER_MODE_REQUEST_SELECT
-        && Array.isArray(data.selectors) && data.selectors.length > 0) {
-      const selectors = normalizeSelectorsFromNewFormat(data.selectors);
-      if (selectors.length > 0) {
-        out.push({
-          nodeId: node.id,
-          nodeLabel,
-          selectionMode: SELECTION_MODE_REQUESTER_SELECT_ONE,
-          minSelect: 1,
-          maxSelect: 1,
-          selectors,
-        });
-      }
-      continue;
-    }
-
-    // 2) 레거시 approvers[] + candidatePool.selectionMode 검사
-    const legacy = legacyCandidatePoolSelectors(data.approvers);
-    if (legacy && legacy.selectors.length > 0) {
-      // ONE / MANY 모두 demo 화면에서는 동일하게 후보 목록을 보여주되,
-      // demo_mock 시나리오는 ONE 만 자동 검증한다.
-      if (legacy.selectionMode === SELECTION_MODE_REQUESTER_SELECT_ONE
-          || legacy.selectionMode === SELECTION_MODE_REQUESTER_SELECT_MANY) {
-        out.push({
-          nodeId: node.id,
-          nodeLabel,
-          selectionMode: legacy.selectionMode,
-          minSelect: legacy.minSelect,
-          maxSelect: legacy.maxSelect,
-          selectors: legacy.selectors,
-        });
-      }
-    }
-  }
-  return out;
+// candidate-pools API 응답을 RequesterSelectionPanel 이 쓰는 requiredNodes 모양으로 변환한다.
+// 서버가 requestSelect 노드만, 후보까지 펼쳐서 준다(REQUESTER_SELECT_ONE = 1명 선택).
+//   응답: { nodes: [{ nodeId, label, stageName, candidates: [{ userId, displayName, sourceRef }] }] }
+export function candidatePoolsToRequiredNodes(response) {
+  const nodes = response && Array.isArray(response.nodes) ? response.nodes : [];
+  return nodes
+    .filter((n) => n && n.nodeId)
+    .map((n) => ({
+      nodeId: n.nodeId,
+      nodeLabel: n.stageName || n.label || n.nodeId,
+      selectionMode: SELECTION_MODE_REQUESTER_SELECT_ONE,
+      minSelect: 1,
+      maxSelect: 1,
+      candidates: (Array.isArray(n.candidates) ? n.candidates : [])
+        .filter((c) => c && c.userId)
+        .map((c) => ({
+          userId: c.userId,
+          displayName: c.displayName || c.userId,
+          sourceName: c.sourceRef && c.sourceRef.name ? c.sourceRef.name : null,
+        })),
+    }));
 }
 
 // "요청자가 사후확인 선택"(기능 A) 노드 목록을 반환한다.

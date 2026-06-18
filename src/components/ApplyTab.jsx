@@ -4,7 +4,7 @@ import { playbooksApi, approvalsApi, describeError } from '../api';
 import { getFeBase } from '../runtimeSettings';
 import { makeLocalId, makeRandomTitle } from '../utils';
 import {
-  findRequesterSelectionNodes,
+  candidatePoolsToRequiredNodes,
   findPostConfirmChoiceNodes,
   buildAssignees,
   validateSelections,
@@ -49,10 +49,15 @@ export default function ApplyTab({ user, onCreated, onOpenSettings }) {
     let alive = true;
     setRevisionLoading(true);
     setRevisionError('');
-    playbooksApi.latestRevision(actor, selectedId)
-      .then((rev) => {
+    // 결재자 후보(requestSelect)는 candidate-pools 가 펼쳐 주고, 사후확인 선택 노드는
+    // revision definition 에서 추출한다(candidate-pools 미포함).
+    Promise.all([
+      playbooksApi.candidatePools(actor, selectedId),
+      playbooksApi.latestRevision(actor, selectedId),
+    ])
+      .then(([pools, rev]) => {
         if (!alive) return;
-        setRequiredNodes(findRequesterSelectionNodes(rev?.definition));
+        setRequiredNodes(candidatePoolsToRequiredNodes(pools));
         setPostConfirmNodes(findPostConfirmChoiceNodes(rev?.definition));
         setSelections({});
       })
@@ -266,7 +271,6 @@ export default function ApplyTab({ user, onCreated, onOpenSettings }) {
 
           {!revisionLoading && (requiredNodes.length > 0 || postConfirmNodes.length > 0) && (
             <RequesterSelectionPanel
-              actor={actor}
               requiredNodes={requiredNodes}
               postConfirmNodes={postConfirmNodes}
               selections={selections}
