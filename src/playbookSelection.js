@@ -1,7 +1,7 @@
 // 기안 시점에 기안자가 직접 정해야 하는 항목(결재자 선택 / 사후확인 선택)을 추려낸다.
 //
-// - 결재자 선택(requestSelect): 서버의 `GET /playbooks/{id}/candidate-pools` 가
-//   approverMode=requestSelect 노드를 후보까지 펼쳐서 내려준다. 본 모듈은 그 응답을
+// - 결재자 선택(requesterSelect): 서버의 `GET /playbooks/{id}/candidate-pools` 가
+//   requesterSelect 옵션 노드를 후보까지 펼쳐서 내려준다. 본 모듈은 그 응답을
 //   화면이 쓰는 공통 모양으로 변환만 한다(클라이언트에서 selector 를 직접 펼치지 않는다).
 // - 사후확인 선택(기능 A): candidate-pools 에는 없으므로 revision 의 definition JSON 에서 추출한다.
 //
@@ -23,7 +23,7 @@ function parseDefinition(definitionJsonOrObject) {
 }
 
 // candidate-pools API 응답을 RequesterSelectionPanel 이 쓰는 requiredNodes 모양으로 변환한다.
-// 서버가 requestSelect 노드만, 후보까지 펼쳐서 준다(REQUESTER_SELECT_ONE = 1명 선택).
+// 서버가 requesterSelect 노드만, 후보까지 펼쳐서 준다(REQUESTER_SELECT_ONE = 1명 선택).
 //   응답: { nodes: [{ nodeId, label, stageName, candidates: [{ userId, displayName, sourceRef }] }] }
 export function candidatePoolsToRequiredNodes(response) {
   const nodes = response && Array.isArray(response.nodes) ? response.nodes : [];
@@ -94,7 +94,7 @@ export function selectionsToAssignees(requiredNodes, selections) {
 }
 
 // 결재자 선택(approver) + 사후확인 선택(postConfirm)을 nodeId 기준으로 병합한 assignees[] 를 만든다.
-// 같은 노드가 양쪽(requestSelect + 사후확인 선택)에 모두 해당하면 한 항목으로 합쳐진다.
+// 같은 노드가 양쪽(requesterSelect + 사후확인 선택)에 모두 해당하면 한 항목으로 합쳐진다.
 // 사후확인은 ON(true)일 때만 전송 — 미선택/OFF 는 BE 에서 일반 결재자로 처리(기본 OFF)되므로 생략.
 export function buildAssignees(requiredNodes, postConfirmNodes, selections) {
   const byNodeId = new Map();

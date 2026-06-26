@@ -60,11 +60,11 @@ export function listDirectoryUsers({ actor = 'demo-mock', q, page = 0, size = 10
 export const playbooksApi = {
   list: (actor) => apiRequest('/playbooks', { actor }),
   // 최신 revision (definition JSON 포함). 기안 시점에 "요청자 사후확인 선택"(postConfirm)
-  // 노드를 추려내기 위해 사용한다. requestSelect 결재자 후보는 candidatePools 로 받는다.
+  // 노드를 추려내기 위해 사용한다. requesterSelect 결재자 후보는 candidatePools 로 받는다.
   latestRevision: (actor, playbookId) =>
     apiRequest(`/playbooks/${playbookId}/revisions/latest`, { actor }),
 
-  // 결재자 후보 사전 조회 (USE). approverMode=requestSelect 노드만, 서버가 후보를 펼쳐 반환한다.
+  // 결재자 후보 사전 조회 (USE). requesterSelect 노드만, 서버가 후보를 펼쳐 반환한다.
   // 응답: { playbookId, playbookRevision, nodes: [{ nodeId, label, stageName,
   //         candidates: [{ userId, displayName, sourceRef }] }] }
   // 기존엔 latestRevision + org-directory 로 클라이언트가 selector 를 직접 펼쳤으나 서버 단일 호출로 대체.

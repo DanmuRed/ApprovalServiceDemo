@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { UserCheck, ClipboardCheck } from 'lucide-react';
 
-// requestSelect 노드 1건의 후보 버튼들. 후보는 candidate-pools API 가 이미 펼쳐 내려주므로
+// requesterSelect 노드 1건의 후보 버튼들. 후보는 candidate-pools API 가 이미 펼쳐 내려주므로
 // (node.candidates) 클라이언트에서 selector 를 펼치지 않는다.
 function NodeSelectionCard({ node, selection, onChange }) {
   const candidates = Array.isArray(node.candidates) ? node.candidates : [];

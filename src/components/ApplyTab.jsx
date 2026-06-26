@@ -49,7 +49,7 @@ export default function ApplyTab({ user, onCreated, onOpenSettings }) {
     let alive = true;
     setRevisionLoading(true);
     setRevisionError('');
-    // 결재자 후보(requestSelect)는 candidate-pools 가 펼쳐 주고, 사후확인 선택 노드는
+    // 결재자 후보(requesterSelect)는 candidate-pools 가 펼쳐 주고, 사후확인 선택 노드는
     // revision definition 에서 추출한다(candidate-pools 미포함).
     Promise.all([
       playbooksApi.candidatePools(actor, selectedId),
